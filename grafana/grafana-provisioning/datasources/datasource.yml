@@ -1,0 +1,31 @@
+apiVersion: 1
+
+datasources:
+  - name: "dmarc-aggregate"
+    type: "elasticsearch"
+    access: "proxy"
+    orgId: 1
+    uid: "dmarc_es_ag"
+    url: "http://10.0.2.2:9200"
+    isDefault: true
+    jsonData:
+      index: "[dmarc_aggregate-]YYYY-MM-DD"
+      esVersion: 8.11.0
+      timeField: "date_range"
+      interval: "Daily"
+    version: 1
+    editable: false
+  - name: "dmarc-forensic"
+    type: "elasticsearch"
+    access: "proxy"
+    orgId: 1
+    uid: "dmarc_es_fo"
+    url: "http://10.0.2.2:9200"
+    isDefault: false
+    jsonData:
+      index: "[dmarc_forensic-]YYYY-MM-DD"
+      esVersion: 8.11.0
+      timeField: "arrival_date"
+      interval: "Daily"
+    version: 1
+    editable: false

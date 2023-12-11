@@ -1,27 +1,91 @@
 version: '3.5'
+volumes:
+  elasticsearch_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  dmarc_visualizer:
+    name: dmarc_visualizer
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.2.0/29
+
 services:
   parsedmarc:
     build: ./parsedmarc/
     volumes:
       - ./files:/input:ro
       - ./output_files:/output
-    command: parsedmarc -c /parsedmarc.ini /input/* --debug
+    command: sh -c "crond && parsedmarc --verbose -c /parsedmarc.ini /input/*"
+    restart: always
+    networks:
+      dmarc_visualizer:
+        ipv4_address: 10.0.2.4
     depends_on:
-      - elasticsearch
-    restart: on-failure
+      elasticsearch:
+        condition: service_healthy
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
-    environment:
-      - discovery.type=single-node
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     volumes:
-      - ./elastic_data:/usr/share/elasticsearch/data
+      - elasticsearch_data:/usr/share/elasticsearch/data:rw
+    ports:
+      - 9200:9200
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl","-s" ,"-f", "http://localhost:9200/_cat/health" ]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      dmarc_visualizer:
+        ipv4_address: 10.0.2.2
+    environment:
+      - cluster.name=dmarc_visualizer
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms2048m -Xms2048m"
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
 
   grafana:
     build: ./grafana/
+    volumes:
+      - grafana_data:/var/lib/grafana
     ports:
       - 3000:3000
-    user: root
+    networks:
+      dmarc_visualizer:
+        ipv4_address: 10.0.2.3
+    # user: grafana
     environment:
-      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-worldmap-panel
-      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_LOG_LEVEL: debug
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/Grafana-DMARC_Reports.json
+      GF_EXPLORE_ENABLED: false
+      GF_ALERTING_ENABLED: false
+      GF_UNIFIED_ALERTING_ENABLED: false
+      GF_AUTH_ANONYMOUS_ENABLED: false
+      GF_AUTH_OAUTH_AUTO_LOGIN: false
+      GF_AUTH_BASIC: true
+      # GF_AUTH_AZUREAD_ENABLED: true
+      # GF_AUTH_AZUREAD_ALLOW_SIGN_UP: true
+      # GF_AUTH_AZUREAD_CLIENT_ID=CLIENT_ID_FROM_AZURE_PORTAL
+      # GF_AUTH_AZUREAD_CLIENT_SECRET=CLIENT_SECRET_FROM_AZURE_PORTAL
+      # GF_AUTH_AZUREAD_SCOPES=openid email profile
+      # GF_AUTH_AZUREAD_AUTH_URL=AUTH_URL
+      # GF_AUTH_AZUREAD_TOKEN_URL=TOKEN_URL
+      # GF_AUTH_AZUREAD_ROLE_ATTRIBUTE_STRICT: false
+      # GF_AUTH_AZUREAD_ALLOW_ASSIGN_GRAFANA_ADMIN: false
+      # GF_SERVER_ROOT_URL=URL
+    restart: always
+    depends_on:
+      elasticsearch:
+        condition: service_healthy

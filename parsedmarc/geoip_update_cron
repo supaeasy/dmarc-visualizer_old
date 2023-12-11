@@ -1,0 +1,7 @@
+# top of crontab
+
+# Uncomment this line f you would like the results of the update emailed to you.
+# MAILTO=your@email.com
+
+36 17 * * 6,3 /usr/local/bin/geoipupdate
+# end of crontab
